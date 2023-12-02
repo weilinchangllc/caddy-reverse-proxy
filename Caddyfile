@@ -1,31 +1,42 @@
-{ # global options
-    admin off # theres no need for the admin api in railway's environment
-    persist_config off # storage isn't persistent anyway
-    auto_https off # railway handles https for us, this would cause issues if left enabled
-    log { # runtime logs
-        format console # set runtime log format to console mode 
+# global options
+{
+    admin off
+    persist_config off
+    auto_https off
+    log {
+        format console
     }
-    servers { # server options
-        trusted_proxies static private_ranges # trust railway's proxy
+    servers {
+        trusted_proxies static private_ranges
     }
 }
 
-:{$PORT} { # site block, listens on the $PORT environment variable, automatically assigned by railway
-    log { # access logs
-        format console # set access log format to console mode
+:{$PORT} {
+    log {
+        format console
     }
 
-    reverse_proxy {$FRONTEND_HOST} # proxy all requests for /* to the frontend, configure this variable in the service settings
+    # Handle OPTIONS requests (preflight)
+    handle /webhook/* {
+        header {
+            Access-Control-Allow-Origin "*"
+            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers "Origin, Authorization, Accept, Content-Type, X-Requested-With"
+            Access-Control-Allow-Credentials true
+        }
 
-    # the handle_path directive will strip /api/ from the path before proxying
-    # this is needed if your backend's api routes don't start with /api/
-    # change paths as needed
-    handle_path /api/* { # this strips the /api/ prefix from the uri sent to the proxy address
-        reverse_proxy {$BACKEND_HOST} # proxy all requests for /api/* to the backend, configure this variable in the service settings
+        route {
+            @options {
+                method OPTIONS
+            }
+            respond @options "OK" 200
+        }
+
+        # Reverse proxy for n8n webhook
+        reverse_proxy https://n8n-production-3075.up.railway.app {
+            header_up Host {http.reverse_proxy.upstream.hostport}
+            # Remove any existing Access-Control-Allow-Origin headers from the proxied response
+            header_down -Access-Control-Allow-Origin
+        }
     }
-
-    # if your backend's api routes do start with /api/ then you wouldn't want to strip the path prefix
-    # if so, comment out the above handle_path block, and uncomment this reverse_proxy directive
-    # change paths as needed
-    # reverse_proxy {$BACKEND_HOST} # configure this variable in the service settings
 }
